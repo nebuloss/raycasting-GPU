@@ -36,7 +36,7 @@ typedef struct{
 
 typedef struct{
     vector2d position;
-    vector2d right,left;
+    vector2d direction;
     vector2d start,plane;
     vector2d rotation;
 }camera;
@@ -51,23 +51,21 @@ typedef struct{
 
 #define ROTATION_ANGLE 0.1
 
-void cameraStartandPlane(camera* c){
-    c->start.x=c->position.x+c->left.x;
-    c->start.y=c->position.y+c->left.y;
-
-    c->plane.x=c->position.x+c->right.x-c->start.x;
-    c->plane.y=c->position.y+c->right.y-c->start.y;
+void cameraEvalStart(camera* c){
+    c->start.x=c->position.x+c->direction.x-c->plane.x;
+    c->start.y=c->position.y+c->direction.y-c->plane.y;
 }
 
 camera initCamera(double x,double y,double fov){
     camera c;
     c.position.x=x;
     c.position.y=y;
-    c.right.x=tan(fov/2);
-    c.left.y=c.right.y=1;
-    c.left.x=-c.right.x;
+    c.direction.x=0;
+    c.direction.y=1;
+    c.plane.x=tan(fov/2);
+    c.plane.y=0;
 
-    cameraStartandPlane(&c);
+    cameraEvalStart(&c);
 
     c.rotation.x=cos(ROTATION_ANGLE);
     c.rotation.y=sin(ROTATION_ANGLE);
@@ -75,21 +73,21 @@ camera initCamera(double x,double y,double fov){
 }
 
 void cameraLeftRotation(camera* c){
-    c->right.x=c->rotation.x*c->right.x-c->rotation.y*c->right.y;
-    c->right.y=c->rotation.y*c->right.x+c->rotation.x*c->right.y;
+    c->direction.x=c->rotation.x*c->direction.x-c->rotation.y*c->direction.y;
+    c->direction.y=c->rotation.y*c->direction.x+c->rotation.x*c->direction.y;
 
-    c->left.x=c->rotation.x*c->left.x-c->rotation.y*c->left.y;
-    c->left.y=c->rotation.y*c->left.x+c->rotation.x*c->left.y;
-    cameraStartandPlane(c);
+    c->plane.x=c->rotation.x*c->plane.x-c->rotation.y*c->plane.y;
+    c->plane.y=c->rotation.y*c->plane.x+c->rotation.x*c->plane.y;
+    cameraEvalStart(c);
 }
 
 void cameraRightRotation(camera* c){
-    c->right.x=c->rotation.x*c->right.x+c->rotation.y*c->right.y;
-    c->right.y=c->rotation.x*c->right.y-c->rotation.y*c->right.x;
+    c->direction.x=c->rotation.x*c->direction.x+c->rotation.y*c->direction.y;
+    c->direction.y=c->rotation.x*c->direction.y-c->rotation.y*c->direction.x;
 
-    c->left.x=c->rotation.x*c->left.x+c->rotation.y*c->left.y;
-    c->left.y=c->rotation.x*c->left.y-c->rotation.y*c->left.x;
-    cameraStartandPlane(c);
+    c->plane.x=c->rotation.x*c->plane.x+c->rotation.y*c->plane.y;
+    c->plane.y=c->rotation.x*c->plane.y-c->rotation.y*c->plane.x;
+    cameraEvalStart(c);
 }
 
 gpu_surface* newGPUSurface(SDL_Surface* s){
@@ -137,8 +135,8 @@ void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,int i){
     xposition1=c->position.x;
     yposition1=c->position.y;
 
-    xdirection=c->start.x+c->plane.x*((double)i/screen->w)-xposition1;
-    ydirection=c->start.y+c->plane.y*((double)i/screen->w)-yposition1;
+    xdirection=c->start.x+c->plane.x*2*((double)i/screen->w)-xposition1;
+    ydirection=c->start.y+c->plane.y*2*((double)i/screen->w)-yposition1;
     
     if (xdirection>=0){
         xdiff=(int)xposition1+1-xposition1;
@@ -261,11 +259,11 @@ int main(){
             switch (event.key.keysym.sym){
                 case SDLK_UP:
                     
-                    cam.position.x+=0.1;
+                    
                     break;
                 case SDLK_DOWN:
 
-                    cam.position.x-=0.1;
+                    
                     break;
                 case SDLK_RIGHT:
                     cameraRightRotation(&cam);
