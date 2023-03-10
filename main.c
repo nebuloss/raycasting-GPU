@@ -99,8 +99,8 @@ void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,int i){
     double posY=c->position.y;
 
     double cameraX=((double)(2*i))/screen->w-1;
-    double rayDirX=posX+c->plane.x*cameraX;
-    double rayDirY=posY+c->plane.y*cameraX;
+    double rayDirX=c->direction.x+c->plane.x*cameraX;
+    double rayDirY=c->direction.y+c->plane.y*cameraX;
 
     double deltaDistX = sqrt(1 + (rayDirY * rayDirY) / (rayDirX * rayDirX));
     double deltaDistY = sqrt(1 + (rayDirX * rayDirX) / (rayDirY * rayDirY));
@@ -146,12 +146,12 @@ void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,int i){
           side = 1;
         }
         
-      }while(!map[mapX][mapY]); 
+      }while(!map[mapY][mapX]); 
 
       if(side == 0) perpWallDist = (sideDistX - deltaDistX);
       else          perpWallDist = (sideDistY - deltaDistY);
      
-      int lineHeight = (double)2000 / perpWallDist;
+      int lineHeight = (double)500/ perpWallDist;
       //printf("i=%d perWalldist=%lf\n",i,perpWallDist);
 
       double wallX; //where exactly the wall was hit
@@ -187,6 +187,8 @@ int main(){
         gpuSurfaceCopyColumn(gpu_wall,gpu_screen,1,i,i);
     }
     */
+
+    double nextx,nexty;
      
     
     while (1){
@@ -201,21 +203,6 @@ int main(){
 
         if (event.type==SDL_KEYDOWN){
             switch (event.key.keysym.sym){
-                case SDLK_UP:
-                    if (!map[(int)(cam.position.y+0.1*cam.direction.y)][(int)(cam.position.x+0.1*cam.direction.x)]){
-                        cam.position.x+=0.01*cam.direction.x;
-                        cam.position.y+=0.01*cam.direction.y;
-                    }
-                        
-
-                    break;
-                case SDLK_DOWN:
-                    if (!map[(int)(cam.position.y-0.1*cam.direction.y)][(int)(cam.position.x-0.1*cam.direction.x)]){
-                        cam.position.x-=0.1*cam.direction.x;
-                        cam.position.y-=0.1*cam.direction.y;
-                    }
-                    
-                    break;
                 case SDLK_RIGHT:
                     cam.angle-=0.05;
                     evalCameraAngle(&cam);
@@ -224,10 +211,31 @@ int main(){
                     cam.angle+=0.05;
                     evalCameraAngle(&cam);
                     break;
+
+                case SDLK_UP:
+                    nextx=cam.position.x+0.05*cam.direction.x;
+                    nexty=cam.position.y+0.05*cam.direction.y;
+                    if (!map[(int)nexty][(int)nextx]){
+                        cam.position.x=nextx;
+                        cam.position.y=nexty;
+                    }
+                        
+
+                    break;
+                case SDLK_DOWN:
+                    nextx=cam.position.x-0.05*cam.direction.x;
+                    nexty=cam.position.y-0.05*cam.direction.y;
+                    if (!map[(int)nexty][(int)nextx]){
+                        cam.position.x=nextx;
+                        cam.position.y=nexty;
+                    }
+                    
+                    break;
+                
             }
 
         }
-        printf("x=%lf y=%lf dx=%lf dy=%lf\n",cam.position.x,cam.position.y,cam.direction.x,cam.direction.y);
+        //printf("x=%lf y=%lf dx=%lf dy=%lf\n",cam.position.x,cam.position.y,cam.direction.x,cam.direction.y);
         SDL_Delay(10);
         SDL_Flip(screen);
         SDL_FillRect(screen,NULL,0x00000000);
