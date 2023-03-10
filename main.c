@@ -9,14 +9,14 @@
 
 int map[20][20]={
     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,0,1,0,1,0,0,0,0,0,0,0,1,0,0,0,1,0,1,1},
-    {1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,0,0,0,0,1},
-    {1,0,1,0,0,0,1,0,1,0,1,0,1,0,1,1,1,1,0,1},
-    {1,0,1,0,1,0,0,0,1,0,1,0,1,0,1,1,0,1,0,1},
-    {1,0,1,0,1,0,1,0,1,0,1,0,0,0,1,1,0,0,0,1},
-    {1,0,1,0,1,0,1,0,0,0,1,1,0,1,1,1,1,1,0,1},
-    {1,0,1,0,1,0,1,1,1,1,1,1,0,0,0,0,0,0,0,1},
-    {1,0,1,0,1,0,0,0,1,1,1,1,1,1,1,1,1,0,1,1},
+    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
+    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
     {1,0,1,1,1,1,1,0,1,0,0,0,0,0,0,0,0,0,0,1},
     {1,0,1,0,0,0,1,0,1,0,1,0,1,1,1,1,1,1,0,1},
     {1,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,1,0,1},
@@ -173,11 +173,11 @@ void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,int i){
     */
     xdirection1=xdirection/fabs(xdirection);
     ydirection1=ydirection/fabs(xdirection);
-    dist1=sqrt(1+ydirection1*ydirection1);
+    dist1=(1+ydirection1*ydirection1);
 
     xdirection2=xdirection/fabs(ydirection);
     ydirection2=ydirection/fabs(ydirection);
-    dist2=sqrt(1+xdirection2*xdirection2);
+    dist2=(1+xdirection2*xdirection2);
 
     xposition2=xposition1+ydiff*xdirection2;
     yposition2=yposition1+ydiff*ydirection2;
@@ -197,7 +197,7 @@ void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,int i){
         
         if (disttotal1<disttotal2){
             if (map[(int)(yposition1+ysign)][(int)(xposition1+xsign)]){
-                height=(double)100/disttotal1;
+                height=(double)300/disttotal1;
                 column=(yposition1-(int)yposition1)*wall->w;
                 break;
             }
@@ -206,7 +206,7 @@ void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,int i){
             disttotal1+=dist1;
         }else{
             if (map[(int)(yposition2+ysign)][(int)(xposition2+xsign)]){
-                height=(double)100/disttotal2;
+                height=(double)300/disttotal2;
                 column=(xposition2-(int)xposition2)*wall->w;
                 break;
             }
@@ -258,11 +258,18 @@ int main(){
         if (event.type==SDL_KEYDOWN){
             switch (event.key.keysym.sym){
                 case SDLK_UP:
-                    
-                    
+                    if (!map[(int)(cam.position.y+0.1*cam.direction.y)][(int)(cam.position.x+0.1*cam.direction.x)]){
+                        cam.position.x+=0.01*cam.direction.x;
+                        cam.position.y+=0.01*cam.direction.y;
+                    }
+                        
+
                     break;
                 case SDLK_DOWN:
-
+                    if (!map[(int)(cam.position.y-0.1*cam.direction.y)][(int)(cam.position.x-0.1*cam.direction.x)]){
+                        cam.position.x-=0.05*cam.direction.x;
+                        cam.position.y-=0.05*cam.direction.y;
+                    }
                     
                     break;
                 case SDLK_RIGHT:
@@ -274,7 +281,7 @@ int main(){
             }
 
         }
-
+        printf("x=%lf y=%lf\n",cam.position.x,cam.position.y);
         SDL_Delay(10);
         SDL_Flip(screen);
         SDL_FillRect(screen,NULL,0x00000000);
