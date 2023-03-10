@@ -6,6 +6,7 @@
 #define SCREEN_WIDTH 640
 #define SCREEN_HEIGHT 480
 #define PI 3.1415927
+#define CAMERA_FOV 0.66
 
 int map[20][20]={
     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
@@ -37,8 +38,8 @@ typedef struct{
 typedef struct{
     vector2d position;
     vector2d direction;
-    vector2d start,plane;
-    vector2d rotation;
+    vector2d plane;
+    double angle;
 }camera;
 
 typedef struct{
@@ -51,43 +52,11 @@ typedef struct{
 
 #define ROTATION_ANGLE 0.1
 
-void cameraEvalStart(camera* c){
-    c->start.x=c->position.x+c->direction.x-c->plane.x;
-    c->start.y=c->position.y+c->direction.y-c->plane.y;
-}
-
-camera initCamera(double x,double y,double fov){
-    camera c;
-    c.position.x=x;
-    c.position.y=y;
-    c.direction.x=0;
-    c.direction.y=1;
-    c.plane.x=tan(fov/2);
-    c.plane.y=0;
-
-    cameraEvalStart(&c);
-
-    c.rotation.x=cos(ROTATION_ANGLE);
-    c.rotation.y=sin(ROTATION_ANGLE);
-    return c;
-}
-
-void cameraLeftRotation(camera* c){
-    c->direction.x=c->rotation.x*c->direction.x-c->rotation.y*c->direction.y;
-    c->direction.y=c->rotation.y*c->direction.x+c->rotation.x*c->direction.y;
-
-    c->plane.x=c->rotation.x*c->plane.x-c->rotation.y*c->plane.y;
-    c->plane.y=c->rotation.y*c->plane.x+c->rotation.x*c->plane.y;
-    cameraEvalStart(c);
-}
-
-void cameraRightRotation(camera* c){
-    c->direction.x=c->rotation.x*c->direction.x+c->rotation.y*c->direction.y;
-    c->direction.y=c->rotation.x*c->direction.y-c->rotation.y*c->direction.x;
-
-    c->plane.x=c->rotation.x*c->plane.x+c->rotation.y*c->plane.y;
-    c->plane.y=c->rotation.x*c->plane.y-c->rotation.y*c->plane.x;
-    cameraEvalStart(c);
+void evalCameraAngle(camera* c){
+    c->direction.x=cos(c->angle);
+    c->direction.y=sin(c->angle);
+    c->plane.x=c->direction.y*CAMERA_FOV;
+    c->plane.y=-c->direction.x*CAMERA_FOV;
 }
 
 gpu_surface* newGPUSurface(SDL_Surface* s){
@@ -103,7 +72,7 @@ gpu_surface* newGPUSurface(SDL_Surface* s){
 
 void gpuSurfaceCopyColumn(gpu_surface* src,gpu_surface* dst,int src_column,int dst_column,int dst_height){
     int ystart,yend;
-    int ratio;
+    int shift;
     int ysrc;
 
     if (dst_height<=0) dst_height=1;
@@ -111,117 +80,86 @@ void gpuSurfaceCopyColumn(gpu_surface* src,gpu_surface* dst,int src_column,int d
     ystart=(dst->h>>1)-(dst_height>>1);
     yend=(dst->h>>1)+(dst_height>>1);
     if (ystart<0){
-        ratio=-ystart;
+        shift=-ystart;
         ystart=0;
         yend=dst->h;
     }else{
-        ratio=0;
+        shift=0;
     }
 
-    for (;ystart<=yend;ystart++,ratio++){
-        ysrc=((double)ratio/dst_height)*src->h;
+    for (;ystart<=yend;ystart++,shift++){
+        ysrc=((double)shift/dst_height)*src->h;
         //printf("ysrc=%d ydst=%d ratio=%d dst_height=%d\n",ysrc,ystart,ratio,dst_height);
         *(Uint32*)(dst->pixels+ystart*dst->pitch+dst_column*dst->bpp)=*(Uint32*)((src->pixels+ysrc*src->pitch+src_column*src->bpp));
     }
 }
 
 void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,int i){
+    double posX=c->position.x;
+    double posY=c->position.y;
 
-    SDL_Rect source,dest;
-    
-    double xdirection,ydirection,xdiff,ydiff,xposition1,yposition1,xposition2,yposition2,xsign,ysign;
-    double xdirection1,xdirection2,ydirection1,ydirection2,dist1,dist2,disttotal1,disttotal2;
+    double cameraX=((double)(2*i))/screen->w-1;
+    double rayDirX=posX+c->plane.x*cameraX;
+    double rayDirY=posY+c->plane.y*cameraX;
 
-    xposition1=c->position.x;
-    yposition1=c->position.y;
+    double deltaDistX = sqrt(1 + (rayDirY * rayDirY) / (rayDirX * rayDirX));
+    double deltaDistY = sqrt(1 + (rayDirX * rayDirX) / (rayDirY * rayDirY));
 
-    xdirection=c->start.x+c->plane.x*2*((double)i/screen->w)-xposition1;
-    ydirection=c->start.y+c->plane.y*2*((double)i/screen->w)-yposition1;
-    
-    if (xdirection>=0){
-        xdiff=(int)xposition1+1-xposition1;
-        xsign=0.000001;
-    }
-    else{
-        xdiff=xposition1-(int)xposition1;
-        xsign=-0.000001;
-    }
+    int stepX,stepY;
+    double sideDistX,sideDistY;
 
-    if (ydirection>=0){
-        ydiff=(int)yposition1+1-yposition1;
-        ysign=0.000001;
-    }
-    else{
-        ydiff=yposition1-(int)yposition1;
-        ysign=-0.000001;
-    }
-    /*
-    if (i==241){
-        printf("xdirection=%lf\n",xdirection);
-        printf("ydirection=%lf\n",ydirection);
-        printf("xdirection2=%lf\n",xdirection2);
-        printf("ydirection2=%lf\n",ydirection2);
-        printf("xposition1=%lf\n",xposition1);
-        printf("yposition1=%lf\n",yposition1);
-        printf("x=%d y=%d\n",(int)(yposition1+ysign),(int)(xposition1+xsign));  
-        printf("x=%d y=%d\n",(int)(yposition2+ysign),(int)(xposition2+xsign));  
-        printf("dist1=%lf\n",dist1);
-        printf("dist2=%lf\n",dist2);
-        printf("xdiff=%lf\n",xdiff);
-        printf("ydiff=%lf\n",ydiff);
-    }
-    */
-    xdirection1=xdirection/fabs(xdirection);
-    ydirection1=ydirection/fabs(xdirection);
-    dist1=(1+ydirection1*ydirection1);
+    int side; //was a NS or a EW wall hit?
 
-    xdirection2=xdirection/fabs(ydirection);
-    ydirection2=ydirection/fabs(ydirection);
-    dist2=(1+xdirection2*xdirection2);
+    int mapX=posX;
+    int mapY=posY;
 
-    xposition2=xposition1+ydiff*xdirection2;
-    yposition2=yposition1+ydiff*ydirection2;
+    double perpWallDist;
 
-    xposition1+=xdiff*xdirection1;
-    yposition1+=xdiff*ydirection1;
+    //calculate step and initial sideDist
+      if (rayDirX < 0){
+        stepX = -1;
+        sideDistX = (posX - (double)mapX) * deltaDistX;
+      }else{
+        stepX = 1;
+        sideDistX = ((double)mapX + 1.0 - posX) * deltaDistX;
+      }if (rayDirY < 0){
+        stepY = -1;
+        sideDistY = (posY - (double)mapY) * deltaDistY;
+      }else{
+        stepY = 1;
+        sideDistY = ((double)mapY + 1.0 - posY) * deltaDistY;
+      }
 
-    disttotal1=dist1*xdiff;
-    disttotal2=dist2*ydiff;
-
-    int height,column;
-            
-    
-            
-
-    while (1){
-        
-        if (disttotal1<disttotal2){
-            if (map[(int)(yposition1+ysign)][(int)(xposition1+xsign)]){
-                height=(double)300/disttotal1;
-                column=(yposition1-(int)yposition1)*wall->w;
-                break;
-            }
-            xposition1+=xdirection1;
-            yposition1+=ydirection1;
-            disttotal1+=dist1;
-        }else{
-            if (map[(int)(yposition2+ysign)][(int)(xposition2+xsign)]){
-                height=(double)300/disttotal2;
-                column=(xposition2-(int)xposition2)*wall->w;
-                break;
-            }
-            xposition2+=xdirection2;
-            yposition2+=ydirection2;
-            disttotal2+=dist2;
+      //perform DDA
+      do{
+        //jump to next map square, either in x-direction, or in y-direction
+        if (sideDistX < sideDistY)
+        {
+          sideDistX += deltaDistX;
+          mapX += stepX;
+          side = 0;
         }
-    }
+        else
+        {
+          sideDistY += deltaDistY;
+          mapY += stepY;
+          side = 1;
+        }
+        
+      }while(!map[mapX][mapY]); 
 
+      if(side == 0) perpWallDist = (sideDistX - deltaDistX);
+      else          perpWallDist = (sideDistY - deltaDistY);
+     
+      int lineHeight = (double)2000 / perpWallDist;
+      //printf("i=%d perWalldist=%lf\n",i,perpWallDist);
 
-    //printf("i=%d height=%d column=%d\n",i,height,column);
-    gpuSurfaceCopyColumn(wall,screen,column,i,height);
+      double wallX; //where exactly the wall was hit
+      if (side == 0) wallX = posY + perpWallDist * rayDirY;
+      else           wallX = posX + perpWallDist * rayDirX;
+      wallX -= floor((wallX));
 
-
-
+      gpuSurfaceCopyColumn(wall,screen,wallX*wall->w,i,lineHeight);
 }
 
 int main(){
@@ -236,20 +174,26 @@ int main(){
 
     gpu_surface* gpu_screen=newGPUSurface(screen);
     gpu_surface* gpu_wall=newGPUSurface(wall);
+
+    camera cam={
+        .direction=(vector2d){0,1},
+        .position=(vector2d){1.2,1.2},
+        .plane=(vector2d){CAMERA_FOV,0},
+        .angle=0
+    };
     
-    camera cam=initCamera(1.2,1.2,PI/2);
     /*
     for (int i=0;i<gpu_screen->w;i++){
         gpuSurfaceCopyColumn(gpu_wall,gpu_screen,1,i,i);
     }
     */
-    
-    
+     
     
     while (1){
         for (int i=0;i<SCREEN_WIDTH;i++){
             myKernel(&cam,gpu_screen,gpu_wall,i);
         }
+     
 
         SDL_PollEvent(&event);
         
@@ -267,21 +211,23 @@ int main(){
                     break;
                 case SDLK_DOWN:
                     if (!map[(int)(cam.position.y-0.1*cam.direction.y)][(int)(cam.position.x-0.1*cam.direction.x)]){
-                        cam.position.x-=0.05*cam.direction.x;
-                        cam.position.y-=0.05*cam.direction.y;
+                        cam.position.x-=0.1*cam.direction.x;
+                        cam.position.y-=0.1*cam.direction.y;
                     }
                     
                     break;
                 case SDLK_RIGHT:
-                    cameraRightRotation(&cam);
+                    cam.angle-=0.05;
+                    evalCameraAngle(&cam);
                     break;
                 case SDLK_LEFT:
-                    cameraLeftRotation(&cam);
+                    cam.angle+=0.05;
+                    evalCameraAngle(&cam);
                     break;
             }
 
         }
-        printf("x=%lf y=%lf\n",cam.position.x,cam.position.y);
+        printf("x=%lf y=%lf dx=%lf dy=%lf\n",cam.position.x,cam.position.y,cam.direction.x,cam.direction.y);
         SDL_Delay(10);
         SDL_Flip(screen);
         SDL_FillRect(screen,NULL,0x00000000);
