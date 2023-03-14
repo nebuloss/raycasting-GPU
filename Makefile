@@ -1,7 +1,12 @@
-all: compile run
+all: compile_cpu run
 
-compile:
-	gcc main.c -g -lSDL -lm -o main
+gpu: compile_gpu run
+
+compile_cpu:
+	gcc main.c -lSDL -lm -O5 -o main
+
+compile_gpu:
+	nvcc main.cu -lSDL -o main
 
 run:
-	./main
+	./main 1440 1080
