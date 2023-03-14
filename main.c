@@ -1,13 +1,18 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <SDL/SDL.h>
-#include <math.h>
+#include <stdio.h> 
+#include <stdlib.h> 
+#include <SDL/SDL.h> //SDL 1.2 utilise le CPU tandis que SDL2 le GPU
+#include <string.h> //memcpy
+#include <math.h> //cos,sin
+#include <time.h> //clock -> pour mesurer le temps
 
-#define SCREEN_WIDTH 640
-#define SCREEN_HEIGHT 480
-#define PI 3.1415927
-#define CAMERA_FOV 0.66
+#define ROTATION_ANGLE 0.05 //vitesse de rotation
+#define CAMERA_SPEED 0.05   //vitesse à laquelle on avance
 
+int SCREEN_WIDTH=620; //largeur de la fenêtre par défaut
+int SCREEN_HEIGHT=480; //hauteur de la fenêtre par défaut
+const double CAMERA_FOV=0.66; //fov 
+
+//description de la map (tableau 2d -> 0=vide 1=mur)
 int map[20][20]={
     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
     {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
@@ -31,128 +36,112 @@ int map[20][20]={
     {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
 };
 
+//vecteur 2 dimensions avec composante flottante
 typedef struct{
-    double x,y;
-}vector2d;
+    float x,y;
+}vector2f;
 
+//structure de la caméra
 typedef struct{
-    vector2d position;
-    vector2d direction;
-    vector2d plane;
-    double angle;
+    vector2f position; //vecteur position
+    vector2f direction; //vecteur direction
+    vector2f plane;  //vecteur plan (orthogonal à la direction)
+    vector2f leftRayDir; // leftRayDir=direction-plane 
+    float angle; //angle radian
 }camera;
 
-//bpp=4
-typedef struct{
-    size_t pitch;
-    size_t w,h;
-    void* pixels;
-}gpu_surface;
-
-
-#define ROTATION_ANGLE 0.05
-#define CAMERA_SPEED 0.05
-
+//met à jour les valeurs en fonction de l'angle
 void evalCameraAngle(camera* c){
-    c->direction.x=cos(c->angle);
+    c->direction.x=cos(c->angle); //cos et sin assure que la norme vaut 1
     c->direction.y=sin(c->angle);
     c->plane.x=c->direction.y*CAMERA_FOV;
     c->plane.y=-c->direction.x*CAMERA_FOV;
+    c->leftRayDir.x=c->direction.x-c->plane.x;
+    c->leftRayDir.y=c->direction.y-c->plane.y;
 }
 
-gpu_surface* newGPUSurface(SDL_Surface* s){
-    gpu_surface* gs=malloc(sizeof(gpu_surface));
-    gs->pitch=s->pitch;
-    gs->w=s->w;
-    gs->h=s->h;
-    gs->pixels=s->pixels;
+//retourne un pointer vers le pixel correspondant
+void* gpuSurfaceGetPixel(SDL_Surface* gs,Uint32 x,Uint32 y){
+    return gs->pixels+(y*gs->pitch+x*gs->format->BytesPerPixel);
 }
 
- //use SDL1 instead of SDL2 beacause we want to do all compute on CPU and not use GPU at all
+/*
+Copie une colonne de pixel d'une surface source vers une autre colonne sur la surface destination. 
+Cette fonction donne la possibilité d'étirer ou rétrécir la colonne sur la surface de destination.
+La fonction est utilisés pour le tracé des murs.
+*/
+void gpuSurfaceCopyColumn(SDL_Surface* src,SDL_Surface* dst,int src_column,int dst_column,int dst_height){
+    int ystart,yend; //surface de destination
+    int shift; //si dépassement sur la destination, de combien?
+    int bpp; //byte per pixel
 
+    bpp=src->format->BytesPerPixel;
+    if (bpp!=dst->format->BytesPerPixel) return; //si les deux surfaces ont un format incompatible
 
-Uint32* gpuSurfaceGetPixel(gpu_surface* gs,Uint32 x,Uint32 y){
-    return (Uint32*)(gs->pixels+y*gs->pitch+(x<<2));
-}
+    if (dst_height<0) dst_height=0; //imossible d'avoir une hauteur négative
 
-void gpuSurfaceCopyColumn(gpu_surface* src,gpu_surface* dst,int src_column,int dst_column,int dst_height){
-    int ystart,yend;
-    int shift;
-
-    if (dst_height<=0) dst_height=1;
-
-    ystart=(dst->h>>1)-(dst_height>>1);
-    yend=(dst->h>>1)+(dst_height>>1);
-    if (ystart<0){
+    ystart=(dst->h>>1)-(dst_height>>1); 
+    yend=ystart+dst_height;
+    if (ystart<0){ //si dépassement sur la surface de destination
         shift=-ystart;
         ystart=0;
         yend=dst->h;
     }else{
-        shift=0;
+        shift=0; //sans dépassement
     }
 
-    double step=((double)1/dst_height)*src->h;
-    double ysrc=shift*step;
+    double step=((double)1/dst_height)*src->h; //décalage sur la source entre chaque pixel sur la destination
+    double ysrc=shift*step; //surface source
 
-    for (;ystart<=yend;ystart++,ysrc+=step){
-        //printf("ysrc=%d ydst=%d ratio=%d dst_height=%d\n",ysrc,ystart,ratio,dst_height);
-        *gpuSurfaceGetPixel(dst,dst_column,ystart)=*gpuSurfaceGetPixel(src,src_column,ysrc);
+    for (;ystart<yend;ystart++,ysrc+=step){
+        memcpy(gpuSurfaceGetPixel(dst,dst_column,ystart),gpuSurfaceGetPixel(src,src_column,ysrc),bpp); //copie des pixels
     }
 }
 
+/*Sur la version CPU ce n'est pas un kernel cuda, c'est une simple fonction.
+Cette fonction est responsable su tracé des murs sur l'écran.
+explications sur ce site https://lodev.org/cgtutor/raycasting.html
+*/
+void wallCasting(camera* c,SDL_Surface* screen,SDL_Surface* wall,int i){
+    float posX=c->position.x;
+    float posY=c->position.y; //position
 
-void myKernel2(camera* c,gpu_surface* screen,gpu_surface* ground,int height,double distance,double rayDirX,double rayDirY,int x,int i){
-    int p=height>>1;
-    double w=p*distance;
+    float cameraX=((float)(i<<1))/screen->w;
+    float rayDirX=c->leftRayDir.x+c->plane.x*cameraX; //direction du rayon étudié
+    float rayDirY=c->leftRayDir.y+c->plane.y*cameraX;
 
-    double d=w/((double)(p+i));
-    double floorX=c->position.x+rayDirX*d;
-    double floorY=c->position.y+rayDirY*d;
+    float rayDirX2=rayDirX*rayDirX;
+    float rayDirY2=rayDirY*rayDirY;
 
-    int textX=(int)(ground->w*(floorX-(int)floorX)) & (ground->w-1);
-    int textY=(int)(ground->h*(floorY-(int)floorY)) & (ground->h-1);
+    float rayDist=sqrt(rayDirX2+rayDirY2);  //norme du rayon
 
-    *gpuSurfaceGetPixel(screen,x,(screen->h>>1)+p+i)=*gpuSurfaceGetPixel(ground,textX,textY);
-}
-
-
-void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,gpu_surface* ground,int i){
-    double posX=c->position.x;
-    double posY=c->position.y;
-
-    double cameraX=((double)(2*i))/screen->w-1;
-    double rayDirX=c->direction.x+c->plane.x*cameraX;
-    double rayDirY=c->direction.y+c->plane.y*cameraX;
-
-    double deltaDistX = sqrt(1 + (rayDirY * rayDirY) / (rayDirX * rayDirX));
-    double deltaDistY = sqrt(1 + (rayDirX * rayDirX) / (rayDirY * rayDirY));
+    float deltaDistX = rayDist/fabsf(rayDirX); 
+    float deltaDistY = rayDist/fabsf(rayDirY);
 
     int stepX,stepY;
-    double sideDistX,sideDistY;
-
+    float sideDistX,sideDistY;
     int side; //was a NS or a EW wall hit?
 
     int mapX=posX;
     int mapY=posY;
 
-    double perpWallDist;
+    float perpWallDist;
+    float wallX; //where exactly the wall was hit
 
-    //calculate step and initial sideDist
-    if (rayDirX < 0){
-    stepX = -1;
-    sideDistX = (posX - (double)mapX) * deltaDistX;
+    if (rayDirX < 0){ //gérer la position au sein de la case
+        stepX = -1;
+        sideDistX = (posX - (float)mapX) * deltaDistX;
     }else{
-    stepX = 1;
-    sideDistX = ((double)mapX + 1.0 - posX) * deltaDistX;
+        stepX = 1;
+        sideDistX = ((float)mapX + 1.0 - posX) * deltaDistX;
     }if (rayDirY < 0){
-    stepY = -1;
-    sideDistY = (posY - (double)mapY) * deltaDistY;
+        stepY = -1;
+        sideDistY = (posY - (float)mapY) * deltaDistY;
     }else{
-    stepY = 1;
-    sideDistY = ((double)mapY + 1.0 - posY) * deltaDistY;
+        stepY = 1;
+        sideDistY = ((float)mapY + 1.0 - posY) * deltaDistY;
     }
-
-    //perform DDA
+    //on avance jusqu'à taper contre un mur (la map étant entouré d'un mur, on est certain de s'arrêter)
     do{
         if (sideDistX < sideDistY){
             sideDistX += deltaDistX;
@@ -165,112 +154,138 @@ void myKernel(camera* c,gpu_surface* screen,gpu_surface* wall,gpu_surface* groun
         } 
     }while(!map[mapY][mapX]); 
 
-    if(side == 0) perpWallDist = (sideDistX - deltaDistX);
-    else          perpWallDist = (sideDistY - deltaDistY);
-    
-    int lineHeight = (double)500/ perpWallDist;
-    //printf("i=%d perWalldist=%lf\n",i,perpWallDist);
-
-    double wallX; //where exactly the wall was hit
-    if (side == 0) wallX = posY + perpWallDist * rayDirY;
-    else           wallX = posX + perpWallDist * rayDirX;
-    wallX -= floor((wallX));
-
-    gpuSurfaceCopyColumn(wall,screen,wallX*wall->w,i,lineHeight);
-
-    int n=(screen->h>>1)-(lineHeight>>1);
-    for (int j=0;j<n;j++){
-        myKernel2(c,screen,ground,lineHeight,perpWallDist,rayDirX,rayDirY,i,j);
+    if(!side){
+        perpWallDist = sideDistX-deltaDistX;
+        wallX = posY + perpWallDist * rayDirY;
+    }else{
+        perpWallDist = sideDistY-deltaDistY;
+        wallX = posX + perpWallDist * rayDirX;
     }
-      
+    
+    int lineHeight = (float)screen->h/ perpWallDist*rayDist; //correction de l'effet fish eye.
+    wallX -= floor(wallX);
+
+    gpuSurfaceCopyColumn(wall,screen,wallX*wall->w,i,lineHeight); //copie de la ligne de pixel correspondante
 }
 
-int main(){
+/*Sur la version CPU ce n'est pas un kernel cuda, c'est une simple fonction.
+Cette fonction est responsable su tracé du sol et du plafond l'écran.
+explications sur ce site https://lodev.org/cgtutor/raycasting2.html.
+Le tracé du sol ne dépend pas de la map. Il est dessiné sur tout l'écran puis recouvert du mur.
+Contrairement au mur qui sont tracés colonne par colonne, le sol est tracé ligne par ligne
+*/
+void floorCasting(camera* c,SDL_Surface* screen,SDL_Surface* floor,SDL_Surface* ceil,int i){
+    int bpp=screen->format->BytesPerPixel;
+    
+    int halfScreenHeight = screen->h>>1;
+    float rowDistance = (float)halfScreenHeight / i;
+
+    float floorStepX = rowDistance * (c->plane.x*2) / screen->w;
+    float floorStepY = rowDistance * (c->plane.y*2) / screen->w;
+
+    float floorX = c->position.x + rowDistance * c->leftRayDir.x; //position X sur le sol
+    float floorY = c->position.y + rowDistance * c->leftRayDir.y; //position Y sur le sol
+
+    //parcours horizontal
+    for(int x = 0; x < screen->w; ++x){
+        int tx = (int)(floor->w * (floorX - (int)floorX)) & (floor->w - 1); //position X dans le texture
+        int ty = (int)(floor->h * (floorY - (int)floorY)) & (floor->h - 1); //position Y dans la texture
+
+        floorX += floorStepX; //on décale les coordonnés en parcourant la ligne
+        floorY += floorStepY;
+
+        memcpy(gpuSurfaceGetPixel(screen,x,i+halfScreenHeight),gpuSurfaceGetPixel(floor,tx,ty),bpp);
+        // le plafond est la symétrie axiale du sol par rapport au centre de l'écran
+        memcpy(gpuSurfaceGetPixel(screen,x,halfScreenHeight-i-1),gpuSurfaceGetPixel(ceil,tx,ty),bpp); 
+    }
+}
+
+//cette fonction charge un bitmap et la convertie vers le format de surface souhaité
+SDL_Surface* loadBitMapFormat(char* restrict filename,SDL_PixelFormat* fmt){
+    SDL_Surface* temp=SDL_LoadBMP(filename);
+    SDL_Surface* s=SDL_ConvertSurface(temp,fmt,0);
+    SDL_FreeSurface(temp);
+    return s;
+}
+
+int main(int argc,char* argv[]){
+    double nextx,nexty; //position suivante
     SDL_Event event;
-    SDL_Surface* temp;
+    struct timespec start, end; //chrono
+
+    if (argc==3){ //si la dimension de la fenêtre est passée en paramètre
+        SCREEN_WIDTH=atoi(argv[1]);
+        SCREEN_HEIGHT=atoi(argv[2]);
+    }
+
+    //initialisation de la SDL 1.2
     SDL_Init(SDL_INIT_VIDEO);
     SDL_Surface* screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 0, SDL_HWPALETTE);
+    SDL_WM_SetCaption("CPU Version", NULL);
 
-    if (screen->format->BytesPerPixel==4){
-        SDL_WM_SetCaption("test", NULL);
+    //chargement des textures
+    SDL_Surface* wall=loadBitMapFormat("brick.bmp",screen->format);
+    SDL_Surface* floor=loadBitMapFormat("stone.bmp",screen->format);
+    SDL_Surface* ceil=loadBitMapFormat("wood.bmp",screen->format);
+    
+    //position initiale de la caméra
+    camera cam={.position=(vector2f){4,4},.angle=0};
+    evalCameraAngle(&cam);
 
-        temp=SDL_LoadBMP("brick.bmp");
-        SDL_Surface* wall=SDL_ConvertSurface(temp,screen->format,0);
-        SDL_FreeSurface(temp);
+    while (1){
+        clock_gettime(CLOCK_REALTIME, &start); // Chronomètre avant
 
-        temp=SDL_LoadBMP("stone.bmp");
-        SDL_Surface* ground=SDL_ConvertSurface(temp,screen->format,0);
-        SDL_FreeSurface(temp);
+        for(int y = 0; y < screen->h/2; y++) floorCasting(&cam,screen,floor,ceil,y);   //tracé su sol et du plafond 
+        for (int i=0;i<SCREEN_WIDTH;i++) wallCasting(&cam,screen,wall,i); //tracé des murs
 
-        gpu_surface* gpu_screen=newGPUSurface(screen);
-        gpu_surface* gpu_wall=newGPUSurface(wall);
-        gpu_surface* gpu_ground=newGPUSurface(ground);
+        clock_gettime(CLOCK_REALTIME, &end); // Chronomètre après
+        double elapsed_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
+        //printf("%f\n", elapsed_time * 1000); //affichage du temps écoulé
 
-        camera cam={
-            .direction=(vector2d){0,1},
-            .position=(vector2d){1.2,1.2},
-            .plane=(vector2d){CAMERA_FOV,0},
-            .angle=0
-        };
-
-        double nextx,nexty;
+        SDL_PollEvent(&event); //on lit les évènements
         
-        
-        while (1){
-            for (int i=0;i<SCREEN_WIDTH;i++){
-                myKernel(&cam,gpu_screen,gpu_wall,gpu_ground,i);
+        if (event.type==SDL_QUIT) break; //si on ferme la fenêtre
+
+        if (event.type==SDL_KEYDOWN){
+            nextx=cam.position.x;
+            nexty=cam.position.y;
+            /*
+            On utilise les flèches pour se diriger:
+            -flèches haut/bas=avancer/reculer
+            -flèches droite/gauche=rotation droite/gauche
+            */
+            switch (event.key.keysym.sym){
+                case SDLK_RIGHT: 
+                    cam.angle-=ROTATION_ANGLE; //décrémente l'angle
+                    evalCameraAngle(&cam);
+                    break;
+                case SDLK_LEFT:
+                    cam.angle+=ROTATION_ANGLE; //incrémente l'angle
+                    evalCameraAngle(&cam);
+                    break;
+
+                case SDLK_UP:
+                    nextx+=CAMERA_SPEED*cam.direction.x;
+                    nexty+=CAMERA_SPEED*cam.direction.y;
+                    break;
+                case SDLK_DOWN:
+                    nextx-=CAMERA_SPEED*cam.direction.x;
+                    nexty-=CAMERA_SPEED*cam.direction.y;
+                    break;   
+                default:      
             }
-        
-
-            SDL_PollEvent(&event);
-            
-            if (event.type==SDL_QUIT) break;
-
-            if (event.type==SDL_KEYDOWN){
-                switch (event.key.keysym.sym){
-                    case SDLK_RIGHT:
-                        cam.angle-=ROTATION_ANGLE;
-                        evalCameraAngle(&cam);
-                        break;
-                    case SDLK_LEFT:
-                        cam.angle+=ROTATION_ANGLE;
-                        evalCameraAngle(&cam);
-                        break;
-
-                    case SDLK_UP:
-                        nextx=cam.position.x+CAMERA_SPEED*cam.direction.x;
-                        nexty=cam.position.y+CAMERA_SPEED*cam.direction.y;
-                        if (!map[(int)nexty][(int)nextx]){
-                            cam.position.x=nextx;
-                            cam.position.y=nexty;
-                        }
-                            
-
-                        break;
-                    case SDLK_DOWN:
-                        nextx=cam.position.x-CAMERA_SPEED*cam.direction.x;
-                        nexty=cam.position.y-CAMERA_SPEED*cam.direction.y;
-                        if (!map[(int)nexty][(int)nextx]){
-                            cam.position.x=nextx;
-                            cam.position.y=nexty;
-                        }
-                        
-                        break;
-                    
-                }
-
+            //on ne bouge pas si on rentre dans un mur
+            if (!map[(int)nexty][(int)nextx]){
+                cam.position.x=nextx;
+                cam.position.y=nexty;
             }
-            //printf("x=%lf y=%lf dx=%lf dy=%lf\n",cam.position.x,cam.position.y,cam.direction.x,cam.direction.y);
-            SDL_Delay(10);
-            SDL_Flip(screen);
-            SDL_FillRect(screen,NULL,0x00000000);
         }
-
-        free(gpu_screen);
-        free(gpu_wall);
-
-        SDL_FreeSurface(wall);
+        SDL_Flip(screen);  //met à jour l'écran
     }
+    //on libère les ressources et on quitte le programme
+    SDL_FreeSurface(wall); 
+    SDL_FreeSurface(floor);
+    SDL_FreeSurface(ceil);
     
     SDL_FreeSurface(screen);
     SDL_Quit();
