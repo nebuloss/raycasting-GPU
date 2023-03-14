@@ -6,8 +6,8 @@ Merci de lire la version CPU avant, afin de comprendre le programme initial
 #include <stdlib.h>
 #include <SDL/SDL.h>
 
-#define CAMERA_SPEED 0.05
-#define ROTATION_ANGLE 0.05
+#define ROTATION_ANGLE 0.003 //vitesse de rotation
+#define CAMERA_SPEED 0.05   //vitesse à laquelle on avance
 
 int SCREEN_WIDTH=620;
 int SCREEN_HEIGHT=480;
@@ -132,7 +132,7 @@ __device__ void gpuSurfaceCopyColumn(gpu_surface* src,gpu_surface* dst,int src_c
 
     ystart=(dst->h>>1)-(dst_height>>1);
     yend=ystart+dst_height;
-    if (ystart<0){
+    if (ystart<=0){
         shift=-ystart;
         ystart=0;
         yend=dst->h;
@@ -270,7 +270,9 @@ SDL_Surface* loadBitMapFormat(char* filename,SDL_PixelFormat* fmt){
 }
 
 int main(int argc,char* argv[]){
-    double nextx,nexty;
+    int relX;
+    Uint8* keystate;
+    double nextX,nextY,stepX,stepY;
     camera cam,*gpu_camera;
     SDL_Event event;
     int* gpu_map;
@@ -289,13 +291,17 @@ int main(int argc,char* argv[]){
 
     //initialisation de la SDL
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Surface* screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 0, SDL_HWPALETTE);
-    SDL_WM_SetCaption("GPU version", NULL);
+    SDL_Surface* screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 0, SDL_NOFRAME);
+    SDL_ShowCursor(SDL_DISABLE);
+    SDL_WM_GrabInput(SDL_GRAB_ON);
+
     block_numbers=(screen->pitch*screen->h>>11)+1; //nombre de blocs necessaires pour atteindre des bonnes perforamnces (=(nb_pixels écran/ 2048) +1)
 
     SDL_Surface* wall_surface=loadBitMapFormat("brick.bmp",screen->format);
     SDL_Surface* floor_surface=loadBitMapFormat("stone.bmp",screen->format);
     SDL_Surface* ceil_surface=loadBitMapFormat("wood.bmp",screen->format);
+
+    SDL_WM_SetIcon(floor_surface,NULL); //set icon x)
     
     //en plus des surfaces dans la RAM, on alloue les gpu_surfaces dans le VRAM
     gpu_surface* gpu_screen=allocGPUSurface(screen);
@@ -331,41 +337,42 @@ int main(int argc,char* argv[]){
         cudaEventElapsedTime(&elapsed_time,start,stop); //calul su temps écoulé
         //printf("%f\n",elapsed_time);
         
-        SDL_PollEvent(&event);
+        SDL_PumpEvents();
+
+        SDL_GetRelativeMouseState(&relX,NULL);
+        cam.angle-=relX*ROTATION_ANGLE; //décrémente l'angle
+        evalCameraAngle(&cam);
+
+        stepX=0;
+        stepY=0;
         
-        if (event.type==SDL_QUIT) break;
+        keystate=SDL_GetKeyState(NULL);
+        if (keystate[SDLK_ESCAPE]) break;
+        if (keystate[SDLK_z]){
+            stepX+=cam.direction.x;
+            stepY+=cam.direction.y;
+        }
+        if (keystate[SDLK_s]){
+            stepX-=cam.direction.x;
+            stepY-=cam.direction.y;
+        }
+        if (keystate[SDLK_q]){
+            stepX-=cam.direction.y;
+            stepY+=cam.direction.x;
+        }
+        if (keystate[SDLK_d]){
+            stepX+=cam.direction.y;
+            stepY-=cam.direction.x;
+        }
 
-        if (event.type==SDL_KEYDOWN){
-            nextx=cam.position.x;
-            nexty=cam.position.y;
-            switch (event.key.keysym.sym){
-                case SDLK_RIGHT:
-                    cam.angle-=ROTATION_ANGLE;
-                    evalCameraAngle(&cam);
-                    break;
-                case SDLK_LEFT:
-                    cam.angle+=ROTATION_ANGLE;
-                    evalCameraAngle(&cam);
-                    break;
-
-                case SDLK_UP:
-                    nextx+=CAMERA_SPEED*cam.direction.x;
-                    nexty+=CAMERA_SPEED*cam.direction.y;
-                    break;
-                case SDLK_DOWN:
-                    nextx-=CAMERA_SPEED*cam.direction.x;
-                    nexty-=CAMERA_SPEED*cam.direction.y;
-                    break;   
-                default:    
-                    break;  
-            }
-            if (!map[(int)nexty][(int)nextx]){
-                cam.position.x=nextx;
-                cam.position.y=nexty;
-            }
+        nextX=cam.position.x+stepX*CAMERA_SPEED;
+        nextY=cam.position.y+stepY*CAMERA_SPEED;
+        if (!map[(int)nextY][(int)nextX]){
+            cam.position.x=nextX;
+            cam.position.y=nextY;
         }
         
-        SDL_Flip(screen); //met à jour l'écran
+        SDL_Flip(screen);  //met à jour l'écran
     }
     //on s'assure que les kernels cuda aient fini de s'éxécuter avant de quitter
     cudaDeviceSynchronize();

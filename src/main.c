@@ -5,7 +5,7 @@
 #include <math.h> //cos,sin
 #include <time.h> //clock -> pour mesurer le temps
 
-#define ROTATION_ANGLE 0.05 //vitesse de rotation
+#define ROTATION_ANGLE 0.003 //vitesse de rotation
 #define CAMERA_SPEED 0.05   //vitesse à laquelle on avance
 
 int SCREEN_WIDTH=620; //largeur de la fenêtre par défaut
@@ -82,7 +82,7 @@ void gpuSurfaceCopyColumn(SDL_Surface* src,SDL_Surface* dst,int src_column,int d
 
     ystart=(dst->h>>1)-(dst_height>>1); 
     yend=ystart+dst_height;
-    if (ystart<0){ //si dépassement sur la surface de destination
+    if (ystart<=0){ //si dépassement sur la surface de destination
         shift=-ystart;
         ystart=0;
         yend=dst->h;
@@ -209,9 +209,12 @@ SDL_Surface* loadBitMapFormat(char* restrict filename,SDL_PixelFormat* fmt){
 }
 
 int main(int argc,char* argv[]){
-    double nextx,nexty; //position suivante
+    int relX;
+    Uint8* keystate;
     SDL_Event event;
     struct timespec start, end; //chrono
+
+    double nextX,nextY,stepX,stepY;
 
     if (argc==3){ //si la dimension de la fenêtre est passée en paramètre
         SCREEN_WIDTH=atoi(argv[1]);
@@ -220,14 +223,17 @@ int main(int argc,char* argv[]){
 
     //initialisation de la SDL 1.2
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Surface* screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 0, SDL_HWPALETTE);
-    SDL_WM_SetCaption("CPU Version", NULL);
+    SDL_Surface* screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 0, SDL_NOFRAME);
+    SDL_ShowCursor(SDL_DISABLE);
+    SDL_WM_GrabInput(SDL_GRAB_ON);
 
     //chargement des textures
     SDL_Surface* wall=loadBitMapFormat("brick.bmp",screen->format);
     SDL_Surface* floor=loadBitMapFormat("stone.bmp",screen->format);
     SDL_Surface* ceil=loadBitMapFormat("wood.bmp",screen->format);
-    
+
+    SDL_WM_SetIcon(floor,NULL); //set icon x)
+
     //position initiale de la caméra
     camera cam={.position=(vector2f){4,4},.angle=0};
     evalCameraAngle(&cam);
@@ -241,45 +247,42 @@ int main(int argc,char* argv[]){
         clock_gettime(CLOCK_REALTIME, &end); // Chronomètre après
         double elapsed_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
         //printf("%f\n", elapsed_time * 1000); //affichage du temps écoulé
+        //on lit les évènements
+        SDL_PumpEvents();
 
-        SDL_PollEvent(&event); //on lit les évènements
+        SDL_GetRelativeMouseState(&relX,NULL);
+        cam.angle-=relX*ROTATION_ANGLE; //décrémente l'angle
+        evalCameraAngle(&cam);
+
+        stepX=0;
+        stepY=0;
         
-        if (event.type==SDL_QUIT) break; //si on ferme la fenêtre
-
-        if (event.type==SDL_KEYDOWN){
-            nextx=cam.position.x;
-            nexty=cam.position.y;
-            /*
-            On utilise les flèches pour se diriger:
-            -flèches haut/bas=avancer/reculer
-            -flèches droite/gauche=rotation droite/gauche
-            */
-            switch (event.key.keysym.sym){
-                case SDLK_RIGHT: 
-                    cam.angle-=ROTATION_ANGLE; //décrémente l'angle
-                    evalCameraAngle(&cam);
-                    break;
-                case SDLK_LEFT:
-                    cam.angle+=ROTATION_ANGLE; //incrémente l'angle
-                    evalCameraAngle(&cam);
-                    break;
-
-                case SDLK_UP:
-                    nextx+=CAMERA_SPEED*cam.direction.x;
-                    nexty+=CAMERA_SPEED*cam.direction.y;
-                    break;
-                case SDLK_DOWN:
-                    nextx-=CAMERA_SPEED*cam.direction.x;
-                    nexty-=CAMERA_SPEED*cam.direction.y;
-                    break;   
-                default:      
-            }
-            //on ne bouge pas si on rentre dans un mur
-            if (!map[(int)nexty][(int)nextx]){
-                cam.position.x=nextx;
-                cam.position.y=nexty;
-            }
+        keystate=SDL_GetKeyState(NULL);
+        if (keystate[SDLK_ESCAPE]) break;
+        if (keystate[SDLK_z]){
+            stepX+=cam.direction.x;
+            stepY+=cam.direction.y;
         }
+        if (keystate[SDLK_s]){
+            stepX-=cam.direction.x;
+            stepY-=cam.direction.y;
+        }
+        if (keystate[SDLK_q]){
+            stepX-=cam.direction.y;
+            stepY+=cam.direction.x;
+        }
+        if (keystate[SDLK_d]){
+            stepX+=cam.direction.y;
+            stepY-=cam.direction.x;
+        }
+
+        nextX=cam.position.x+stepX*CAMERA_SPEED;
+        nextY=cam.position.y+stepY*CAMERA_SPEED;
+        if (!map[(int)nextY][(int)nextX]){
+            cam.position.x=nextX;
+            cam.position.y=nextY;
+        }
+        
         SDL_Flip(screen);  //met à jour l'écran
     }
     //on libère les ressources et on quitte le programme
