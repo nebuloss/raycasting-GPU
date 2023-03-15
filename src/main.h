@@ -1,5 +1,9 @@
+#ifndef MAIN_H_INCLUDED
+#define MAIN_H_INCLUDED
+
 #define ROTATION_ANGLE 0.003 //vitesse de rotation
-#define CAMERA_SPEED 0.02   //vitesse à laquelle on avance
+#define CPU_CAMERA_SPEED 0.05   //vitesse à laquelle on avance
+#define GPU_CAMERA_SPEED 0.02
 
 int SCREEN_WIDTH=620; //largeur de la fenêtre par défaut
 int SCREEN_HEIGHT=480; //hauteur de la fenêtre par défaut
@@ -54,3 +58,5 @@ typedef struct{
     vector2f leftRayDir; // leftRayDir=direction-plane 
     float angle; //angle radian
 }camera;
+
+#endif

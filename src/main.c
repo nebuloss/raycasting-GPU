@@ -232,8 +232,8 @@ int main(int argc,char* argv[]){
             stepY-=cam.direction.x;
         }
 
-        nextX=cam.position.x+stepX*CAMERA_SPEED;
-        nextY=cam.position.y+stepY*CAMERA_SPEED;
+        nextX=cam.position.x+stepX*CPU_CAMERA_SPEED;
+        nextY=cam.position.y+stepY*CPU_CAMERA_SPEED;
         if (!map[(int)nextY][(int)nextX]){
             cam.position.x=nextX;
             cam.position.y=nextY;
