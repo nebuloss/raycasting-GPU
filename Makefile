@@ -5,7 +5,7 @@ CUDA_FOLDER=/opt/cuda
 
 OUT=main
 SRC_C=main.c
-SRC_CUDA=main.cu
+SRC_CUDA=main2.cu
 
 SCREEN_WIDTH=1920
 SCREEN_HEIGHT=1440
