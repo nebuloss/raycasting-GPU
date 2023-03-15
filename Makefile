@@ -2,10 +2,12 @@ BUILD_FOLDER=build
 ASSETS_FOLDER=assets
 SRC_FOLDER=src
 CUDA_FOLDER=/opt/cuda
+TMP_FOLDER=$(BUILD_FOLDER)/hip
 
 OUT=main
 SRC_C=main.c
-SRC_CUDA=main.cu
+SRC_CUDA=main2.cu
+SRC_HEADER=main.h
 
 SCREEN_WIDTH=1920
 SCREEN_HEIGHT=1440
@@ -19,6 +21,9 @@ nvidia: cuda run
 clean:
 	@echo "cleaning build..."
 	@rm -rf $(BUILD_FOLDER)
+	@if [ -d $(TMP_FOLDER) ]; then \
+		rm -rf $(TMP_FOLDER); \
+	fi
 
 init_build_folder:
 	@echo "init build folder..."
@@ -29,7 +34,7 @@ init_build_folder:
 
 cpu: init_build_folder
 	@echo "compiling source file..."
-	@gcc $(SRC_FOLDER)/$(SRC_C) -lSDL -lm -O5 -o $(BUILD_FOLDER)/$(OUT)
+	@gcc $(SRC_FOLDER)/$(SRC_C) -Wall -lSDL -lm -O5 -o $(BUILD_FOLDER)/$(OUT)
 
 cuda: init_build_folder
 	@echo "compiling cuda file..."
@@ -37,10 +42,12 @@ cuda: init_build_folder
 
 hip: init_build_folder
 	@echo "hipify cuda file..."
-	@hipify-clang $(SRC_FOLDER)/$(SRC_CUDA) --cuda-path=$(CUDA_FOLDER) -o $(BUILD_FOLDER)/$(OUT).hip
+	@mkdir -p $(TMP_FOLDER)
+	@cp $(SRC_FOLDER)/$(SRC_HEADER) $(TMP_FOLDER)
+	@hipify-clang $(SRC_FOLDER)/$(SRC_CUDA) --cuda-path=$(CUDA_FOLDER) -o $(TMP_FOLDER)/$(OUT).hip
 	@echo "compiling hip file..."
-	@hipcc $(BUILD_FOLDER)/$(OUT).hip -lSDL -o $(BUILD_FOLDER)/$(OUT)
+	@hipcc $(TMP_FOLDER)/$(OUT).hip -lSDL -o $(BUILD_FOLDER)/$(OUT)
 
 run: 
 	@echo "running executable..."
-	@cd $(BUILD_FOLDER) && ./$(OUT) $(SCREEN_WIDTH) $(SCREEN_HEIGHT)
+	@cd $(BUILD_FOLDER) && ./$(OUT) $(SCREEN_WIDTH) $(SCREEN_HEIGHT) > result.txt

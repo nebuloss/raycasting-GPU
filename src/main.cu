@@ -1,52 +1,13 @@
 /*
 Merci de lire la version CPU avant, afin de comprendre le programme initial
+Cette version est plus adapté pour des GPU anciens ayant peu de puissance 
+ainsi que pour les iGPU utilisant une partie de la RAM comme VRAM.
 */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <SDL/SDL.h>
-
-#define ROTATION_ANGLE 0.003 //vitesse de rotation
-#define CAMERA_SPEED 0.05   //vitesse à laquelle on avance
-
-int SCREEN_WIDTH=620;
-int SCREEN_HEIGHT=480;
-const double CAMERA_FOV=0.66;
-
-int map[20][20]={
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,1,1,1,1,1,0,1,0,0,0,0,0,0,0,0,0,0,1},
-    {1,0,1,0,0,0,1,0,1,0,1,0,1,1,1,1,1,1,0,1},
-    {1,0,0,0,1,0,1,0,1,0,1,0,1,0,0,0,0,1,0,1},
-    {1,1,1,1,1,0,1,0,1,0,1,0,1,0,0,0,0,1,0,1},
-    {1,0,0,0,0,0,1,0,1,0,1,0,1,0,0,0,0,1,0,1},
-    {1,0,1,1,1,1,1,0,1,0,1,0,1,0,0,0,0,1,0,1},
-    {1,0,1,0,0,0,0,0,1,0,1,0,1,0,0,0,0,1,0,1},
-    {1,0,1,1,1,1,1,1,1,0,1,0,1,0,0,0,0,1,0,1},
-    {1,0,1,0,0,0,1,0,0,0,1,0,1,0,1,1,1,1,0,1},
-    {1,0,0,0,1,0,0,0,1,0,1,0,0,0,1,1,1,0,0,1},
-    {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1},
-};
-
-typedef struct{
-    float x,y;
-}vector2f;
-
-typedef struct{
-    vector2f position;
-    vector2f direction;
-    vector2f plane;
-    vector2f leftRayDir;
-    float angle;
-}camera;
+#include "main.h"
 
 /*
 Pour la version GPU, on créé une structure simplifié par rapport SDL_Surface pour permettre
