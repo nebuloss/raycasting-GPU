@@ -84,24 +84,24 @@ Le tracé du sol ne dépend pas de la map. Il est dessiné sur tout l'écran pui
 Contrairement au mur qui sont tracés colonne par colonne, le sol est tracé pixels par pixels dans le GPU.
 */
 __global__ void rayCasting(camera* c,gpu_surface* gs_screen,gpu_surface* gs_wall,gpu_surface* gs_floor,gpu_surface* gs_ceil,int* gpu_map){
-    __shared__ int shared_map[400];
+    __shared__ int shared_map[MAP_WIDTH*MAP_HEIGHT];
     __shared__ camera shared_camera;
     __shared__ gpu_surface shared_gs_screen;
     __shared__ gpu_surface shared_gs_wall;
     __shared__ gpu_surface shared_gs_floor;
     __shared__ gpu_surface shared_gs_ceil;
 
-    if (threadIdx.x<400){
+    if (threadIdx.x<MAP_WIDTH*MAP_HEIGHT){
         shared_map[threadIdx.x]=gpu_map[threadIdx.x];
-    }else if (threadIdx.x==400){
+    }else if (threadIdx.x==MAP_WIDTH*MAP_HEIGHT){
         memcpy(&shared_gs_screen,gs_screen,sizeof(gpu_surface));
-    }else if (threadIdx.x==401){
+    }else if (threadIdx.x==MAP_WIDTH*MAP_HEIGHT+1){
         memcpy(&shared_gs_wall,gs_wall,sizeof(gpu_surface));
-    }else if (threadIdx.x==402){
+    }else if (threadIdx.x==MAP_WIDTH*MAP_HEIGHT+2){
         memcpy(&shared_gs_floor,gs_floor,sizeof(gpu_surface));
-    }else if (threadIdx.x==403){
+    }else if (threadIdx.x==MAP_WIDTH*MAP_HEIGHT+3){
         memcpy(&shared_gs_ceil,gs_ceil,sizeof(gpu_surface));
-    }else if (threadIdx.x==404){
+    }else if (threadIdx.x==MAP_WIDTH*MAP_HEIGHT+4){
         memcpy(&shared_camera,c,sizeof(camera));
     }
     __syncthreads();
@@ -164,7 +164,7 @@ __global__ void rayCasting(camera* c,gpu_surface* gs_screen,gpu_surface* gs_wall
                 mapY += stepY;
                 side = 1;
             } 
-        }while(!shared_map[mapY*20+mapX]); // les tableaux statiques 2d sont remplacés par des tableau 1d à la compilation.
+        }while(!shared_map[mapY*MAP_WIDTH+mapX]); // les tableaux statiques 2d sont remplacés par des tableau 1d à la compilation.
 
         if(!side){
             perpWallDist = sideDistX-deltaDistX;
@@ -252,8 +252,8 @@ int main(int argc,char* argv[]){
     gpu_surface* gpu_ceil=allocGPUSurface(ceil_surface);
 
     //on alloue et copie la map dans la VRAM
-    cudaMalloc(&gpu_map,sizeof(int)*400); //20x20
-    cudaMemcpy(gpu_map,map,sizeof(int)*400,cudaMemcpyHostToDevice);
+    cudaMalloc(&gpu_map,sizeof(int)*MAP_WIDTH*MAP_HEIGHT);
+    cudaMemcpy(gpu_map,map,sizeof(int)*MAP_WIDTH*MAP_HEIGHT,cudaMemcpyHostToDevice);
 
     cam.position=(vector2f){4,4};
     cam.angle=0;
@@ -316,6 +316,8 @@ int main(int argc,char* argv[]){
     }
     //on s'assure que les kernels cuda aient fini de s'éxécuter avant de quitter
     cudaDeviceSynchronize();
+    cudaFree(gpu_map);
+    cudaFree(gpu_camera);
 
     SDL_FreeSurface(wall_surface);
     SDL_FreeSurface(floor_surface);

@@ -9,6 +9,8 @@ SRC_C=main.c
 SRC_CUDA=main2.cu
 SRC_HEADER=main.h
 
+LFLAGS=-lSDL
+
 SCREEN_WIDTH=1920
 SCREEN_HEIGHT=1440
 
@@ -34,11 +36,11 @@ init_build_folder:
 
 cpu: init_build_folder
 	@echo "compiling source file..."
-	@gcc $(SRC_FOLDER)/$(SRC_C) -Wall -lSDL -lm -O5 -o $(BUILD_FOLDER)/$(OUT)
+	@gcc $(SRC_FOLDER)/$(SRC_C) -Wall $(LFLAGS) -lm -O5 -o $(BUILD_FOLDER)/$(OUT)
 
 cuda: init_build_folder
 	@echo "compiling cuda file..."
-	@nvcc $(SRC_FOLDER)/$(SRC_CUDA) -lSDL -o $(BUILD_FOLDER)/$(OUT)
+	@nvcc $(SRC_FOLDER)/$(SRC_CUDA) $(LFLAGS) -o $(BUILD_FOLDER)/$(OUT)
 
 hip: init_build_folder
 	@echo "hipify cuda file..."
@@ -46,7 +48,7 @@ hip: init_build_folder
 	@cp $(SRC_FOLDER)/$(SRC_HEADER) $(TMP_FOLDER)
 	@hipify-clang $(SRC_FOLDER)/$(SRC_CUDA) --cuda-path=$(CUDA_FOLDER) -o $(TMP_FOLDER)/$(OUT).hip
 	@echo "compiling hip file..."
-	@hipcc $(TMP_FOLDER)/$(OUT).hip -lSDL -o $(BUILD_FOLDER)/$(OUT)
+	@hipcc $(TMP_FOLDER)/$(OUT).hip $(LFLAGS) -o $(BUILD_FOLDER)/$(OUT)
 
 run: 
 	@echo "running executable..."

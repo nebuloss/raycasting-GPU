@@ -114,9 +114,9 @@ Cette fonction est responsable su tracé des murs sur l'écran.
 explications sur ce site https://lodev.org/cgtutor/raycasting.html
 */
 __global__ void wallCasting(camera* c,gpu_surface* screen,gpu_surface* wall,int* gpu_map){
-    __shared__ int shared_map[400];
+    __shared__ int shared_map[MAP_WIDTH*MAP_HEIGHT];
 
-    if (threadIdx.x<400){
+    if (threadIdx.x<MAP_WIDTH*MAP_HEIGHT){
         shared_map[threadIdx.x]=gpu_map[threadIdx.x];
     }
     
@@ -175,7 +175,7 @@ __global__ void wallCasting(camera* c,gpu_surface* screen,gpu_surface* wall,int*
                 mapY += stepY;
                 side = 1;
             } 
-        }while(!shared_map[mapY*20+mapX]); // les tableaux statiques 2d sont remplacés par des tableau 1d à la compilation.
+        }while(!shared_map[mapY*MAP_WIDTH+mapX]); // les tableaux statiques 2d sont remplacés par des tableau 1d à la compilation.
 
         if(!side){
             perpWallDist = sideDistX-deltaDistX;
@@ -282,8 +282,8 @@ int main(int argc,char* argv[]){
     gpu_surface* gpu_ceil=allocGPUSurface(ceil_surface);
 
     //on alloue et copie la map dans la VRAM
-    cudaMalloc(&gpu_map,sizeof(int)*400); //20x20
-    cudaMemcpy(gpu_map,map,sizeof(int)*400,cudaMemcpyHostToDevice);
+    cudaMalloc(&gpu_map,sizeof(int)*MAP_WIDTH*MAP_HEIGHT); 
+    cudaMemcpy(gpu_map,map,sizeof(int)*MAP_WIDTH*MAP_HEIGHT,cudaMemcpyHostToDevice);
 
     cam.position=(vector2f){4,4};
     cam.angle=0;
@@ -348,6 +348,8 @@ int main(int argc,char* argv[]){
     }
     //on s'assure que les kernels cuda aient fini de s'éxécuter avant de quitter
     cudaDeviceSynchronize();
+    cudaFree(gpu_map);
+    cudaFree(gpu_camera);
 
     SDL_FreeSurface(wall_surface);
     SDL_FreeSurface(floor_surface);
