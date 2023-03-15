@@ -153,6 +153,14 @@ Cette fonction est responsable su tracé des murs sur l'écran.
 explications sur ce site https://lodev.org/cgtutor/raycasting.html
 */
 __global__ void wallCasting(camera* c,gpu_surface* screen,gpu_surface* wall,int* gpu_map){
+    __shared__ int shared_map[400];
+
+    if (threadIdx.x<400){
+        shared_map[threadIdx.x]=gpu_map[threadIdx.x];
+    }
+    
+    __syncthreads();
+
     int i = threadIdx.x+blockIdx.x*blockDim.x; // on récupère le i en fonction du numéro de thread et de block
     
     float posX=c->position.x;
@@ -206,7 +214,7 @@ __global__ void wallCasting(camera* c,gpu_surface* screen,gpu_surface* wall,int*
                 mapY += stepY;
                 side = 1;
             } 
-        }while(!gpu_map[mapY*20+mapX]); // les tableaux statiques 2d sont remplacés par des tableau 1d à la compilation.
+        }while(!shared_map[mapY*20+mapX]); // les tableaux statiques 2d sont remplacés par des tableau 1d à la compilation.
 
         if(!side){
             perpWallDist = sideDistX-deltaDistX;
@@ -237,22 +245,26 @@ __global__ void floorCasting(camera* c,gpu_surface* screen,gpu_surface* floor,gp
     int i=threadIdx.x+blockIdx.x*blockDim.x; //i varie de 0 au nombre de pixels de la moitié de la fenêtre.
     int bpp=screen->bpp;
 
+    int screenWidth=screen->w;
     int halfScreenHeight=screen->h>>1;
-    int totalPixels=halfScreenHeight*screen->w;
+    int totalPixels=halfScreenHeight*screenWidth;
 
-    float ratioPlaneX=(c->plane.x*2.0F) / screen->w; //pour éviter de recalculer la valeur à chaque itération on l'a séparé dans une autre variable
-    float ratioPlaneY=(c->plane.y*2.0F) / screen->w;
+    float ratioPlaneX=(c->plane.x*2.0F) / screenWidth; //pour éviter de recalculer la valeur à chaque itération on l'a séparé dans une autre variable
+    float ratioPlaneY=(c->plane.y*2.0F) / screenWidth;
+
+    int floorWidth=floor->w;
+    int floorHeight=floor->h;
 
     while (i<totalPixels){
-        y=i/screen->w; //x associé à i
-        x=i-y*screen->w; //y associé à i
+        y=i/screenWidth; //x associé à i
+        x=i-y*screenWidth; //y associé à i
         rowDistance = (float)halfScreenHeight / y;
 
         floorX = c->position.x + rowDistance * (c->leftRayDir.x+ratioPlaneX*(float)x);
         floorY = c->position.y + rowDistance * (c->leftRayDir.y+ratioPlaneY*(float)x);
 
-        tx = (int)(floor->w * (floorX-(int)floorX)) & (floor->w - 1);
-        ty = (int)(floor->h * (floorY-(int)floorY)) & (floor->h - 1);
+        tx = (int)(floorWidth * (floorX-(int)floorX)) & (floorWidth - 1);
+        ty = (int)(floorHeight * (floorY-(int)floorY)) & (floorHeight - 1);
 
         memcpy(gpuSurfaceGetPixel(screen,x,y+halfScreenHeight),gpuSurfaceGetPixel(floor,tx,ty),bpp);
         memcpy(gpuSurfaceGetPixel(screen,x,halfScreenHeight-y-1),gpuSurfaceGetPixel(ceil,tx,ty),bpp);
@@ -274,7 +286,6 @@ int main(int argc,char* argv[]){
     Uint8* keystate;
     double nextX,nextY,stepX,stepY;
     camera cam,*gpu_camera;
-    SDL_Event event;
     int* gpu_map;
     float elapsed_time;
     size_t block_numbers;
