@@ -9,16 +9,17 @@ SRC_C=main.c
 SRC_CUDA=main2.cu
 SRC_HEADER=main.h
 
+CFLGAGS=-Wall
 LFLAGS=-lSDL
 
 SCREEN_WIDTH=1920
-SCREEN_HEIGHT=1440
+SCREEN_HEIGHT=1080
 
-all: cpu run
+all: cpu
 
-amd: hip run
+amd: hip
 
-nvidia: cuda run
+nvidia: cuda
 
 clean:
 	@echo "cleaning build..."
@@ -36,7 +37,7 @@ init_build_folder:
 
 cpu: init_build_folder
 	@echo "compiling source file..."
-	@gcc $(SRC_FOLDER)/$(SRC_C) -Wall $(LFLAGS) -lm -O5 -o $(BUILD_FOLDER)/$(OUT)
+	@gcc $(SRC_FOLDER)/$(SRC_C) $(CFLAGS) $(LFLAGS) -lm -O5 -o $(BUILD_FOLDER)/$(OUT)
 
 cuda: init_build_folder
 	@echo "compiling cuda file..."
