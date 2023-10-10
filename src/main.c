@@ -168,7 +168,6 @@ SDL_Surface* loadBitMapFormat(char* restrict filename,SDL_PixelFormat* fmt){
 int main(int argc,char* argv[]){
     int relX;
     Uint8* keystate;
-    struct timespec start, end; //chrono
 
     double nextX,nextY,stepX,stepY;
 
@@ -179,7 +178,7 @@ int main(int argc,char* argv[]){
 
     //initialisation de la SDL 1.2
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_Surface* screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 0, SDL_NOFRAME);
+    SDL_Surface* screen = SDL_SetVideoMode(SCREEN_WIDTH, SCREEN_HEIGHT, 0, 0);
     SDL_ShowCursor(SDL_DISABLE);
     SDL_WM_GrabInput(SDL_GRAB_ON);
 
@@ -195,19 +194,19 @@ int main(int argc,char* argv[]){
     evalCameraAngle(&cam);
 
     while (1){
-        clock_gettime(CLOCK_REALTIME, &start); // Chronomètre avant
+        uint32_t frameStart = SDL_GetTicks();
 
         for(int y = 0; y < screen->h/2; y++) floorCasting(&cam,screen,floor,ceil,y);   //tracé su sol et du plafond 
         for (int i=0;i<SCREEN_WIDTH;i++) wallCasting(&cam,screen,wall,i); //tracé des murs
 
-        clock_gettime(CLOCK_REALTIME, &end); // Chronomètre après
-        double elapsed_time = (end.tv_sec - start.tv_sec) + (end.tv_nsec - start.tv_nsec) / 1e9;
-        //printf("%f\n", elapsed_time * 1000); //affichage du temps écoulé
+        uint32_t deltaTime = SDL_GetTicks() - frameStart;
+        if (!deltaTime) deltaTime = 1;
+
         //on lit les évènements
         SDL_PumpEvents();
 
         SDL_GetRelativeMouseState(&relX,NULL);
-        cam.angle-=relX*ROTATION_ANGLE; //décrémente l'angle
+        cam.angle-= (relX / (float)SCREEN_WIDTH) * ROTATION_SPEED * deltaTime; //décrémente l'angle
         evalCameraAngle(&cam);
 
         stepX=0;
@@ -232,8 +231,8 @@ int main(int argc,char* argv[]){
             stepY-=cam.direction.x;
         }
 
-        nextX=cam.position.x+stepX*CPU_CAMERA_SPEED;
-        nextY=cam.position.y+stepY*CPU_CAMERA_SPEED;
+        nextX = cam.position.x + (stepX * CAMERA_SPEED * deltaTime);
+        nextY = cam.position.y + (stepY * CAMERA_SPEED * deltaTime);
         if (!map[(int)nextY][(int)nextX]){
             cam.position.x=nextX;
             cam.position.y=nextY;

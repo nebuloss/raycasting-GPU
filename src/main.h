@@ -1,9 +1,8 @@
 #ifndef MAIN_H_INCLUDED
 #define MAIN_H_INCLUDED
 
-#define ROTATION_ANGLE 0.003 //vitesse de rotation
-#define CPU_CAMERA_SPEED 0.05   //vitesse à laquelle on avance
-#define GPU_CAMERA_SPEED 0.02
+#define ROTATION_SPEED 0.06 //vitesse de rotation
+#define CAMERA_SPEED 0.005   //vitesse à laquelle on avance
 
 int SCREEN_WIDTH=620; //largeur de la fenêtre par défaut
 int SCREEN_HEIGHT=480; //hauteur de la fenêtre par défaut
